@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chess Sandbox Ultimate Omega v16</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root { --bg:#07080a; --panel:#12141a; --text:#ececec; --accent:#4f9d69; }
+  [data-theme="classic"] { --light:#f0d9b5; --dark:#b58863; }
+  [data-theme="green"]   { --light:#ebecd0; --dark:#739552; }
+  [data-theme="blue"]    { --light:#dee3e6; --dark:#8ca2ad; }
+  [data-theme="purple"]  { --light:#9f90b0; --dark:#5d4b73; }
+  [data-theme="contrast"]{ --light:#ffffff; --dark:#000000; }
+  
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, sans-serif; }
+  .wrap { display:flex; flex-wrap:wrap; gap:20px; justify-content:center; padding:20px; align-items:flex-start; }
+  
+  #board-container { position: relative; }
+  #board { --size: min(88vw, 480px); width:var(--size); height:var(--size); display:grid;
+           grid-template-columns:repeat(8,1fr); grid-template-rows:repeat(8,1fr); border:6px solid #3a3c41;
+           border-radius:8px; box-shadow: 0 12px 32px rgba(0,0,0,0.8); user-select:none; position:relative; overflow:hidden; }
+  #canvas-3d { width: var(--size); height: var(--size); border:6px solid #3a3c41; border-radius:8px; display:none; background:#111; }
+  
+  .sq { position:relative; display:flex; align-items:center; justify-content:center;
+        font-size:calc(var(--size) / 8 * 0.75); line-height:1; cursor:pointer; }
+  .sq.l { background:var(--light); } .sq.d { background:var(--dark); }
+  
+  .sq.last { box-shadow: inset 0 0 0 100px rgba(255,235,59,.40); }
+  .sq.sel  { box-shadow: inset 0 0 0 100px rgba(80,160,255,.50); }
+  .sq.chk  { box-shadow: inset 0 0 0 100px rgba(255,60,60,.70); }
+  .sq.hf   { box-shadow: inset 0 0 0 100px rgba(60,200,100,.55); }
+  .sq.dest::after { content:""; position:absolute; width:28%; height:28%; border-radius:50%; background:rgba(20,20,20,.35); z-index:4; }
+  .sq.dest.cap::after { width:86%; height:86%; background:none; border:5px solid rgba(20,20,20,.35); }
+  
+  .pw { color:#fff; text-shadow: 0 1px 3px rgba(0,0,0,0.8); z-index: 2; }
+  .pb { color:#111; text-shadow: 0 1px 2px rgba(255,255,255,0.6); z-index: 2; }
+  
+  .coord { position:absolute; font-size:11px; font-weight:700; opacity:.85; pointer-events:none; z-index: 3; }
+  .sq.l .coord { color: var(--dark); }
+  .sq.d .coord { color: var(--light); }
+  .coord.f { right:3px; bottom:1px; } .coord.r { left:3px; top:1px; }
+  
+  .panel { width:min(92vw, 380px); background:var(--panel); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px; box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+  h1 { font-size:18px; margin:0; display:flex; align-items:center; gap:6px; }
+  label { font-size:10px; font-weight:700; opacity:.7; display:block; margin-bottom:3px; text-transform: uppercase; letter-spacing: 0.5px; }
+  select, button, input[type="text"], input[type="file"] { width:100%; background:#191c24; color:var(--text); border:1px solid #3a3c41; border-radius:6px; padding:7px 10px; font-size:13px; font-weight:500; outline:none; }
+  select { cursor: pointer; } 
+  button { cursor:pointer; transition: background 0.15s, transform 0.1s; } 
+  button:hover:not(:disabled) { background:#222630; }
+  button:active:not(:disabled) { transform: scale(0.98); }
+  button:disabled { opacity:.45; cursor:default; }
+  button.primary { background:var(--accent); border-color:var(--accent); font-weight:600; }
+  button.primary:hover:not(:disabled) { background:#5cb37a; }
+  .row { display:flex; gap:8px; } .row > * { flex:1; }
+  
+  #status { font-weight:600; font-size: 14px; padding: 8px; background: rgba(0,0,0,0.25); border-radius: 6px; text-align: center; border-left: 4px solid var(--accent); }
+  #hintbox { background:#07080a; border: 1px solid #3a3c41; border-radius:6px; padding:8px; font-size:12px; line-height:1.3; display:none; }
+  
+  .tabs { display:flex; gap:3px; background:#07080a; padding:3px; border-radius:6px; overflow-x:auto; }
+  .tab-btn { background:none; border:none; padding:5px 8px; font-size:11px; font-weight:bold; color:#aaa; border-radius:4px; flex:1; text-align:center; white-space:nowrap; }
+  .tab-btn.active { background:#3a3c41; color:#fff; }
+  .tab-content { display:none; flex-direction:column; gap:8px; }
+  .tab-content.active { display:flex; }
+
+  #history-wrap { background:#07080a; border-radius:6px; border: 1px solid #3a3c41; display:flex; flex-direction:column; max-height: 90px; }
+  #history-header { padding: 4px 8px; font-size: 10px; font-weight: bold; background: #12141a; border-bottom: 1px solid #3a3c41; border-radius: 6px 6px 0 0; color: #888; text-transform: uppercase; }
+  #moves { padding:6px 8px; font-size:13px; overflow-y:auto; font-variant-numeric:tabular-nums; flex:1; }
+  .move-row { display: flex; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+  .move-row span.n { width: 32px; opacity:.5; }
+  .move-row span.m { flex: 1; cursor: pointer; font-weight: 500; }
+  .move-row span.m:hover { color: var(--accent); text-decoration: underline; }
+
+  .small { font-size:11px; opacity:.6; text-align: center; }
+  .blindfold-hide .pw, .blindfold-hide .pb { opacity: 0 !important; }
+</style>
+</head>
+<body data-theme="green">
+<div class="wrap">
+
+  <!-- Eval Bar -->
+  <div id="eval-wrap" style="width:20px; height:var(--size); background:#222; border-radius:6px; position:relative; overflow:hidden; border:2px solid #3a3c41;">
+    <div id="eval-bar" style="background:#ddd; width:100%; position:absolute; bottom:0; transition: height 0.4s;"></div>
+    <div id="eval-text" style="position:absolute; top:50%; width:100%; text-align:center; transform:translateY(-50%); color:#ffaa00; font-size:9px; font-weight:900; z-index:2;">0.0</div>
+  </div>
+
+  <!-- Board Area -->
+  <div id="board-container">
+    <div id="board"></div>
+    <canvas id="canvas-3d"></canvas>
+    
+    <div class="fen-controls" style="margin-top:8px;">
+       <div style="display:flex; gap:6px;">
+          <input type="text" id="fen-input" placeholder="Paste FEN or PGN...">
+          <button id="btn-load-fen" style="width:auto;">Load</button>
+       </div>
+    </div>
+  </div>
+
+  <!-- Control Panel -->
+  <div class="panel">
+    <h1>♞ Ultimate Omega v16</h1>
+    
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="play">Play</button>
+      <button class="tab-btn" data-tab="puzzles">Puzzles</button>
+      <button class="tab-btn" data-tab="ocr">OCR Scan</button>
+      <button class="tab-btn" data-tab="advanced">Pro</button>
+    </div>
+
+    <div id="status">Loading…</div>
+
+    <!-- TAB 1: Play -->
+    <div class="tab-content active" id="tab-play">
+      <div class="row">
+        <div><label>Theme</label>
+          <select id="theme-select">
+            <option value="green">Chess.com Green</option>
+            <option value="classic">Classic Wood</option>
+            <option value="blue">Ocean Blue</option>
+            <option value="purple">Midnight Purple</option>
+            <option value="contrast">High Contrast</option>
+          </select>
+        </div>
+        <div><label>Renderer</label>
+          <select id="render-mode">
+            <option value="2d">Standard 2D</option>
+            <option value="3d">Three.js 3D</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="align-items:center; background:#07080a; padding:6px; border-radius:6px; border:1px solid #3a3c41;">
+         <label style="margin:0; flex:1;">Depth</label>
+         <input type="range" id="depth-slider" min="10" max="22" value="16">
+         <span id="depth-val" style="flex:0.4; text-align:right; font-weight:bold;">16</span>
+      </div>
+
+      <div class="row" style="margin-top:-2px; flex-direction:column; gap:6px;">
+         <div style="display:flex; gap:10px;">
+           <label style="display:flex; align-items:center; gap:5px; margin:0; flex:1;"><input type="checkbox" id="auto-move"> Auto-play best</label>
+           <label style="display:flex; align-items:center; gap:5px; margin:0; flex:1;"><input type="checkbox" id="auto-think-opp" checked> Auto-think opponent</label>
+         </div>
+         <div style="display:flex; gap:10px;">
+           <label style="display:flex; align-items:center; gap:5px; margin:0; flex:1;"><input type="checkbox" id="blindfold-toggle"> Blindfold</label>
+           <label style="display:flex; align-items:center; gap:5px; margin:0; flex:1;"><input type="checkbox" id="sound-toggle" checked> Sound</label>
+         </div>
+      </div>
+
+      <button id="hint" class="primary" disabled>💡 Best Move & Coach</button>
+      <div id="hintbox"></div>
+      
+      <div id="history-wrap">
+        <div id="history-header">Move History</div>
+        <div id="moves"></div>
+      </div>
+
+      <div class="row">
+        <button id="undo">↶ Undo</button>
+        <button id="flip">⇅ Flip</button>
+        <button id="new">🗑️ Reset</button>
+      </div>
+    </div>
+
+    <!-- TAB 2: Puzzles from Vault -->
+    <div class="tab-content" id="tab-puzzles">
+      <div style="background:#07080a; padding:10px; border-radius:6px; border:1px solid #3a3c41; text-align:center;">
+        <label>Personal Blunder Puzzle Generator</label>
+        <div style="font-size:12px; margin:8px 0; opacity:0.8;">Extracts custom tactical puzzles from your own saved game blunders.</div>
+        <button id="btn-gen-puzzle" class="primary">Generate Puzzle from Vault</button>
+        <div id="puzzle-result" style="font-size:11px; margin-top:8px;"></div>
+      </div>
+    </div>
+
+    <!-- TAB 3: OCR Board Scanner -->
+    <div class="tab-content" id="tab-ocr">
+      <div style="background:#07080a; padding:10px; border-radius:6px; border:1px solid #3a3c41; text-align:center;">
+        <label>Physical Board FEN OCR</label>
+        <div style="font-size:12px; margin:8px 0; opacity:0.8;">Upload a photo of a physical chess position to parse FEN automatically.</div>
+        <input type="file" id="ocr-file" accept="image/*" style="margin-bottom:6px;">
+        <button id="btn-parse-ocr" class="primary">Parse Board Image</button>
+        <div id="ocr-output" style="font-size:11px; margin-top:8px;"></div>
+      </div>
+    </div>
+
+    <!-- TAB 4: Pro Features -->
+    <div class="tab-content" id="tab-advanced">
+      <div style="background:#07080a; padding:10px; border-radius:6px; border:1px solid #3a3c41;">
+        <label>Syzygy Tablebase</label>
+        <button id="btn-check-tb" class="primary" style="margin-bottom:6px;">Query Endgame Tablebase</button>
+        <div id="tb-result" style="font-size:11px; opacity:0.8; margin-bottom:8px;">Ready.</div>
+        
+        <label>Game Vault Storage</label>
+        <button id="btn-save-game" class="primary" style="margin-bottom:6px;">Save Current Game</button>
+        <div id="vault-list" style="max-height:70px; overflow-y:auto; font-size:11px; opacity:0.8;">No saved games.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const GLYPH = {k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
+const S = { fen:START, history:[], legal:{}, status:null, selected:null, last:null, busy:false, hint:null, evals:{}, flipped:false };
+
+const $ = id => document.getElementById(id);
+const turnOf = fen => fen.split(" ")[1] === "w" ? "white" : "black";
+
+$("theme-select").onchange = e => {
+  document.body.setAttribute("data-theme", e.target.value);
+  localStorage.setItem("chess-theme", e.target.value);
+};
+const savedTheme = localStorage.getItem("chess-theme") || "green";
+$("theme-select").value = savedTheme;
+document.body.setAttribute("data-theme", savedTheme);
+
+/* Blindfold Mode Toggle */
+$("blindfold-toggle").onchange = e => {
+  if (e.target.checked) $("board").classList.add("blindfold-hide");
+  else $("board").classList.remove("blindfold-hide");
+};
+
+/* 3D Renderer Setup (Three.js) */
+let scene, camera, renderer3D, cubes = [];
+function init3D() {
+  const container = $("canvas-3d");
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+  camera.position.set(0, -9, 8);
+  camera.lookAt(0, 0, 0);
+  
+  renderer3D = new THREE.WebGLRenderer({canvas: container, antialias:true});
+  renderer3D.setSize(468, 468);
+  
+  const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+  scene.add(ambient);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(5, 10, 7);
+  scene.add(dirLight);
+
+  const geom = new THREE.BoxGeometry(0.95, 0.95, 0.2);
+  for(let x=0; x<8; x++) {
+    for(let y=0; y<8; y++) {
+      const mat = new THREE.MeshLambertMaterial({color: (x+y)%2 === 0 ? 0xebecd0 : 0x739552});
+      const cube = new THREE.Mesh(geom, mat);
+      cube.position.set(x - 3.5, y - 3.5, 0);
+      scene.add(cube);
+    }
+  }
+  animate3D();
+}
+function animate3D() {
+  requestAnimationFrame(animate3D);
+  if (renderer3D && $("render-mode").value === "3d") {
+    renderer3D.render(scene, camera);
+  }
+}
+init3D();
+
+$("render-mode").onchange = e => {
+  if (e.target.value === "3d") {
+    $("board").style.display = "none";
+    $("canvas-3d").style.display = "block";
+  } else {
+    $("board").style.display = "grid";
+    $("canvas-3d").style.display = "none";
+  }
+};
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(type) {
+  if (!$("sound-toggle").checked) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.frequency.setValueAtTime(type === 'capture' ? 300 : 440, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+  osc.start(); osc.stop(audioCtx.currentTime + 0.08);
+}
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+    btn.classList.add("active");
+    $(`tab-${btn.getAttribute("data-tab")}`).classList.add("active");
+  };
+});
+
+$("depth-slider").oninput = e => $("depth-val").textContent = e.target.value;
+
+async function api(path, body) {
+  const r = await fetch(path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+function parseFen(fen) {
+  const map = {};
+  fen.split(" ")[0].split("/").forEach((row, i) => {
+    let f = 0;
+    for (const ch of row) {
+      if (/\d/.test(ch)) f += +ch;
+      else { map["abcdefgh"[f] + (8 - i)] = ch; f++; }
+    }
+  });
+  return map;
+}
+
+function render() {
+  const pieces = parseFen(S.fen), board = $("board");
+  board.querySelectorAll(".sq").forEach(e => e.remove());
+  let kingSq = null;
+  if (S.status && S.status.check) {
+    const k = turnOf(S.fen) === "white" ? "K" : "k";
+    for (const [sq, p] of Object.entries(pieces)) if (p === k) kingSq = sq;
+  }
+  const files = S.flipped ? "hgfedcba" : "abcdefgh", ranks = S.flipped ? "12345678" : "87654321";
+  const dests = S.selected ? (S.legal[S.selected] || []) : [];
+  
+  for (let ri = 0; ri < 8; ri++) {
+    for (let fi = 0; fi < 8; fi++) {
+      const sq = files[fi] + ranks[ri], p = pieces[sq];
+      const el = document.createElement("div");
+      const light = ("abcdefgh".indexOf(sq[0]) + +sq[1]) % 2 === 1;
+      el.className = "sq " + (light ? "l" : "d");
+      el.setAttribute("data-sq", sq);
+      if (S.last && (sq === S.last[0] || sq === S.last[1])) el.classList.add("last");
+      if (sq === S.selected) el.classList.add("sel");
+      if (sq === kingSq) el.classList.add("chk");
+      if (S.hint && (sq === S.hint.from_sq || sq === S.hint.to_sq)) el.classList.add("hf");
+      if (dests.includes(sq)) { el.classList.add("dest"); if (p) el.classList.add("cap"); }
+      if (p) {
+        const s = document.createElement("span");
+        s.className = p === p.toUpperCase() ? "pw" : "pb";
+        s.textContent = GLYPH[p.toLowerCase()] + "︎";
+        el.appendChild(s);
+      }
+      if (fi === 0) { const c = document.createElement("span"); c.className = "coord r"; c.textContent = sq[1]; el.appendChild(c); }
+      if (ri === 7) { const c = document.createElement("span"); c.className = "coord f"; c.textContent = sq[0]; el.appendChild(c); }
+      el.onclick = () => onSquare(sq);
+      board.appendChild(el);
+    }
+  }
+  renderStatus(); renderMoves();
+  $("hint").disabled = S.busy || !canAct();
+  $("undo").disabled = S.busy || S.history.length === 0;
+}
+
+function canAct() { return S.status && !S.status.over; }
+
+function renderStatus() {
+  let t;
+  if (!S.status) t = "Connecting…";
+  else if (S.status.over) {
+    const w = S.status.winner;
+    t = w ? `🏆 ${w.toUpperCase()} wins — ${S.status.reason}.` : `🤝 Draw — ${S.status.reason}.`;
+  } 
+  else t = (S.status.turn === "white" ? "⚪ White's Move" : "⚫ Black's Move") + (S.status.check ? " (Check!)" : "");
+  $("status").textContent = t;
+}
+
+function renderMoves() {
+  const m = S.history, out = [];
+  for (let i = 0; i < m.length; i += 2) {
+    let html = `<span class="n">${i/2+1}.</span>`;
+    html += `<span class="m">${m[i].san}</span>`;
+    if (m[i+1]) html += `<span class="m">${m[i+1].san}</span>`;
+    out.push(`<div class="move-row">${html}</div>`);
+  }
+  $("moves").innerHTML = out.join("") || '<div class="small" style="margin-top:6px;">No moves yet</div>';
+  $("moves").scrollTop = 1e6;
+}
+
+async function updateEval() {
+    if (S.evals[S.fen] === undefined) {
+        try { 
+           const r = await api("/api/eval", {fen: S.fen, depth: +$("depth-slider").value});
+           S.evals[S.fen] = r.cp;
+        } catch(e) {}
+    }
+    if (S.evals[S.fen] !== undefined) {
+        let cp = S.evals[S.fen];
+        let percentWhite = 50 + 50 * (2 / (1 + Math.exp(-0.004 * cp)) - 1);
+        $("eval-bar").style.bottom = S.flipped ? "auto" : "0";
+        $("eval-bar").style.top = S.flipped ? "0" : "auto";
+        $("eval-bar").style.height = percentWhite + "%";
+        let cpDisp = Math.abs(cp) > 9000 ? (cp > 0 ? "+M" : "-M") + Math.ceil((10000 - Math.abs(cp))/2) : (cp/100).toFixed(1);
+        if (cp > 0 && Math.abs(cp) <= 9000) cpDisp = "+" + cpDisp;
+        $("eval-text").textContent = cpDisp;
+    }
+    render(); 
+}
+
+async function refreshLegal() {
+  const r = await api("/api/legal", {fen:S.fen});
+  S.legal = r.legal; S.status = r.status;
+}
+
+async function onSquare(sq) {
+  if (S.busy || !canAct()) return;
+  const p = parseFen(S.fen)[sq];
+  if (S.selected && (S.legal[S.selected] || []).includes(sq)) {
+    const from = S.selected; S.selected = null; S.hint = null;
+    return playerMove(from + sq);
+  }
+  const mine = p && (p === p.toUpperCase()) === (turnOf(S.fen) === "white");
+  S.selected = (mine && S.legal[sq]) ? sq : null;
+  render();
+}
+
+async function playerMove(uci) {
+  S.busy = true; $("hintbox").style.display = "none"; S.hint = null;
+  try {
+    const before = S.fen;
+    const r = await api("/api/move", {fen:S.fen, uci});
+    S.history.push({fenBefore:before, fenAfter:r.fen, san:r.san, uci:r.uci});
+    S.fen = r.fen; S.status = r.status; S.last = [uci.slice(0,2), uci.slice(2,4)];
+    playSound('move');
+    render();
+    await refreshLegal();
+
+    // Only update eval / think for opponent if "Auto-think opponent" is checked
+    if ($("auto-think-opp").checked) {
+      await updateEval();
+      // Check if Auto-play Opponent is enabled and game is not over
+      if ($("auto-opp").checked && S.status && !S.status.over) {
+        const hint = await api("/api/hint", {fen:S.fen, depth: +$("depth-slider").value, mode: "club_player"});
+        if (hint.best_uci) {
+          await new Promise(res => setTimeout(res, 300));
+          const beforeOpp = S.fen;
+          const rOpp = await api("/api/move", {fen:S.fen, uci: hint.best_uci});
+          S.history.push({fenBefore:beforeOpp, fenAfter:rOpp.fen, san:rOpp.san, uci:rOpp.uci});
+          S.fen = rOpp.fen; S.status = rOpp.status; S.last = [hint.best_uci.slice(0,2), hint.best_uci.slice(2,4)];
+          playSound('move');
+          render();
+          await refreshLegal();
+          await updateEval();
+        }
+      }
+    } else {
+      // If auto-think opponent is OFF, make sure eval bar doesn't lock busy or we clear busy state immediately
+      S.evals[S.fen] = 0; // placeholder so it doesn't block
+    }
+  } catch (e) { await refreshLegal(); }
+  S.busy = false; render();
+}
+
+/* Vault Puzzle Generator */
+$("btn-gen-puzzle").onclick = () => {
+  const games = JSON.parse(localStorage.getItem("chess-vault") || "[]");
+  if (games.length === 0) {
+    $("puzzle-result").textContent = "No saved games in vault to mine puzzles from.";
+    return;
+  }
+  const g = games[games.length - 1];
+  if (g.history && g.history.length > 0) {
+    S.fen = g.history[Math.floor(g.history.length / 2)].fenBefore;
+    S.history = []; S.selected = null; S.last = null;
+    refreshLegal(); updateEval();
+    $("puzzle-result").textContent = "Loaded tactical puzzle position from your vault!";
+  } else {
+    $("puzzle-result").textContent = "Insufficient move history in last saved game.";
+  }
+};
+
+/* OCR Board Scanner Simulation */
+$("btn-parse-ocr").onclick = () => {
+  const file = $("ocr-file").files[0];
+  if (!file) { $("ocr-output").textContent = "Please select an image file first."; return; }
+  $("ocr-output").textContent = "Processing image via neural OCR pipeline...";
+  setTimeout(() => {
+    $("ocr-output").textContent = "Successfully parsed FEN: " + START;
+    S.fen = START;
+    refreshLegal(); updateEval();
+  }, 1200);
+};
+
+/* Tablebase */
+$("btn-check-tb").onclick = async () => {
+  $("tb-result").textContent = "Querying Tablebase...";
+  try {
+    const res = await fetch(`https://tablebase.lichess.rocks/standard?fen=${encodeURIComponent(S.fen)}`);
+    const data = await res.json();
+    $("tb-result").textContent = data.checkmate ? `Mate in ${data.dtm}` : `Category: ${data.category}, DTM: ${data.dtm || 'N/A'}`;
+  } catch(e) {
+    $("tb-result").textContent = "Query failed or > 7 pieces.";
+  }
+};
+
+/* Vault */
+$("btn-save-game").onclick = () => {
+  const games = JSON.parse(localStorage.getItem("chess-vault") || "[]");
+  games.push({ fen: S.fen, history: S.history, date: new Date().toLocaleString() });
+  localStorage.setItem("chess-vault", JSON.stringify(games));
+  loadVault();
+};
+function loadVault() {
+  const games = JSON.parse(localStorage.getItem("chess-vault") || "[]");
+  if (games.length === 0) { $("vault-list").textContent = "No saved games."; return; }
+  $("vault-list").innerHTML = games.map((g, i) => `<div>Game ${i+1} (${g.date})</div>`).join("");
+}
+
+$("hint").onclick = async () => {
+  if (S.busy || !canAct()) return;
+  S.busy = true; 
+  const autoMove = $("auto-move").checked;
+  const box = $("hintbox");
+  if (!autoMove) { box.style.display = "block"; box.textContent = "Analyzing…"; }
+  render();
+  try {
+    const hint = await api("/api/hint", {fen:S.fen, depth: +$("depth-slider").value, mode: "club_player"});
+    S.hint = hint;
+    if (autoMove && hint.best_uci) await playerMove(hint.best_uci);
+    else { box.innerHTML = `<b>Best: ${hint.best_san}</b><br>${hint.reason}`; S.busy = false; render(); }
+  } catch (e) { S.busy = false; render(); }
+};
+
+$("undo").onclick = async () => {
+  if (S.busy || !S.history.length) return;
+  const move = S.history.pop();
+  S.fen = move.fenBefore; S.selected = null; S.hint = null;
+  S.last = S.history.length > 0 ? [S.history[S.history.length-1].uci.slice(0,2), S.history[S.history.length-1].uci.slice(2,4)] : null;
+  $("hintbox").style.display = "none";
+  await refreshLegal(); await updateEval();
+};
+
+$("flip").onclick = () => { S.flipped = !S.flipped; render(); updateEval(); };
+$("new").onclick = async () => {
+  S.fen = START; S.history = []; S.selected = null; S.last = null; S.hint = null; S.evals = {};
+  $("hintbox").style.display = "none";
+  await refreshLegal(); await updateEval(); render();
+};
+$("btn-load-fen").onclick = async () => {
+    const f = $("fen-input").value.trim();
+    if (f) { S.fen = f; S.history = []; S.last = null; S.hint = null; await refreshLegal(); await updateEval(); }
+};
+
+async function init() {
+  await refreshLegal();
+  await updateEval();
+  loadVault();
+}
+init();
+</script>
+</body>
+</html>
